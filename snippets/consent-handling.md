@@ -1,156 +1,183 @@
- >Sep 2024 Update: according to Google's best-practices: consent/default signal resembles cookie-policy consent/update on every page load resembling persisted user-consent.
-{.is-warning} 
-
-> Google's recommended approach:
-> 1. Scenario 1: The end-user has not been exposed to a consent popup on the previous page: 
-> - Step 1. Set up a default consent state with the default options. 
-> - Step 2. Update the end-user's consent status after they have confirmed their consent choices. 
-> -- If the page triggers a reload after the user submits their choice, the update command must be executed **before the reload** to ensure the correct status carries over.
-> -- If there is no reload, execute the update command **immediately after the user interaction** with the consent choice.
-> 2. Scenario 2: The end-user has been exposed to a consent popup previously: Continue to use region-specific default tag settings on every page of the site. Additionally, use the update command on all subsequent pages, using the persisted values from the consent banner. This might require using a wait_for_update setting if the consent banner updates asynchronously. The consent update command should occur before any hits are sent.
-
-
-> ![external_google_analytics_attribution_top_of_mind.png](/external_google_analytics_attribution_top_of_mind.png)
-
-# Google Consent Mode
-## How to check if Consent Mode (CoMo) is enabled?
-1. Download Google Tag Assistant from Chrome Web Store
-Visit https://chromewebstore.google.com/?utm_source=ext_app_menu and look for 'tag assistant companion'. 
-Install the extension
-2. Enable extension (temporarily) for 'Incognito' windows. 
-To start a clean sheet investigation it is useful to do this in Chrome's Incognito window.
-3. Open a new incognito window
-Go to the menu bar and click on New Incognito Window (Ctrl+Shift+N)
-4. Click on the Google Tag Assistant extension
-When opening the Google Tag Assistant it will open the https://tagassistant.google.com/ page. Here you can add domains to check if CoMo is enabled. 
-5. Add domain
-Click on Add Domain to 'debug' a website. For instance 'https://www.newyorkpizza.nl/'. Start debugging. This will open the website.
+---
+name: consent-mode-qa
+description: Audit, validate, and debug Google Consent Mode (CoMo) implementations in GTM.
+  Use this skill when the user asks about Consent Mode setup, consent default/update events,
+  gcs/gcd parameters, cookie banner integration, CMP validation, pre/post-consent checks,
+  consent timing issues, SPA consent handling, or QA before go-live. Trigger whenever
+  the user mentions Consent Mode, cookiebot, consent banner, gcs parameter, or consent
+  default/update.
 ---
 
-The Tag Assistant checks for available Google Tags on the page. The GTM-container can only be debugged when you copy the Preview link of the GTM-container.
+# Google Consent Mode QA & Validation
 
-<p>
-
-## Pre-consent Check - when cookiebanner is presented to user
-1. When the site opens this is basically the pre-consent check because Incognito starts with a clean sheet where no cookies were stored before.
-
-  > A `Consent Default` event should always be present. No `Consent Update` event is expected yet.
-{.is-info}
-
-The `default` consent signal should resemble the cookie policy of the client. This means that if the client wants GA4 always on (and thus storing analyitcs cookies), the default setting for `analytics_storge` parameter equals `granted`. However, most clients don't accept cookies before consent is given and so most clients will have a `default` setting of `denied` for analtics and ads as well. 
-
-In the example below no *Consent Default* event was found:
-  
-![nyp-step1-noconsent.png](/nyp-step1-noconsent.png)
-
-Since no Consent is configured but events were sent to GA4 this means these events won't have the 'gcs'-parameter. You can double check this by clicking on the events itself. 
-
-![nyp-step1-noconsent_hitsent.png](/nyp-step1-noconsent_hitsent.png)
-<p/>
-
-### Example Consent Default analytics 'granted'
-
-Here it can be seen that for Voetbaldirect.nl the `default` behaviour is `granted` for `analytics_storage`.
-
-![vd-default_consent.png](/vd-default_consent.png)
-
-<p>
-
-## Consenting - when user interacts with cookiebanner
-1. After the pre-consent check you can interact with the Cookie Banner and 'Accept all'.
-2. After accepting the cookies on the website return to that Tag Assistant window. You will probably see a lot more events on the left-hand side, which can also be seen below.
-3. Watch for the *Consent Update* event on the left-hand side to see if an 'Update' event was dispatched. In this example number 15 is the moment where Cookiebot sent the *Consent Update* event.
-4. Click on the *Consent Update* event and Consent tab to see what the values are for the different CoMo-parameters.
-  
-> A `Consent Update` event is expected after user 'submitted' their consent preferences. 
-{.is-info}
-
-![vd-consent-update.png](/vd-consent-update.png)
-
-> Check for existence of the `gcs`-parameter and `gcd`-parameter if it was part of the hit and has the correct values. It could be that hits are sent before the *Consent Update* event and still have the correct values. The latter is what counts.
-{.is-warning}
+Structured playbook for auditing, debugging, and validating Google Consent Mode (CoMo)
+implementations via GTM and Google Tag Assistant.
 
 ---
 
-### Handling consent changes during the session
-If the user changes their consent choices during the same session, this needs to be reflected correctly:
+## When to use this skill
+- Setting up or reviewing Consent Mode (default + update) in GTM
+- Debugging missing `gcs` / `gcd` parameters in GA4 or Google Ads hits
+- Validating CMP (e.g. Cookiebot, OneTrust) integration with GTM
+- QA before go-live on a new or updated consent setup
+- Investigating misattribution caused by incorrect consent timing
+- Reviewing consent behaviour on Single Page Applications (SPAs)
 
-- **If the Consent tool forces a page reload after the change:**  
-  - The `Consent Update` must be executed **before the reload** so that the new consent state persists into the next page load.  
-  - On reload, verify that the `gcs` and `gcd` parameters are updated in the hits with the correct values.  
+---
 
-- **If the Consent tool does *not* force a page reload:**  
-  - Dispatch a new `Consent Update` event immediately after the user changes their choice.  
-  - Ensure any subsequent GTM events (e.g., GA4, Google Ads hits) are sent **only after** this updated consent state is in place.  
-  - Validate that the new `gcs` and `gcd` parameters are reflected in the hits after the update.  
-  
-</p>
-<p>
+## What you need from the user
+- The website URL to audit
+- The CMP/cookie banner platform in use (e.g. Cookiebot, OneTrust, custom)
+- Whether the site is a standard web page or SPA
+- Access to GTM container (Preview link) if debugging tag firing
+- Client's intended consent policy (e.g. analytics always granted, or denied by default)
 
-## Consented (post-consent) check - when navigating to the next page (page load - no SPA update)
-1. When the Consent check is done reload the page or navigate to another page to see what happens after user has consented. So basically run the same checks as above.
+If any of the above are missing, ask for them before proceeding.
 
- > - A `Consent Default` event should always be present. After every `Consent Default` event (post consent interaction), there should also be a `Consent Update` event containing the persisted consented levels of the user.  
-  > - For standard web pages, this **always** applies (meaning; on every Page Load again).
-  > - For Single Page Applications (SPAs), a `Consent Update` is required after both a **hard reload** *and* after each 'virtual' load of the page. This to ensure that the consent state is maintained as users interact with the application.
-  {.is-info}
-  
- 
-![eft_postconsent.png](/eft_postconsent.png)
-  
-## Timing within Consent Mode  
-Again, the order of operations is important and always check for the `gcs` parameters in the hits that were sent.  
+---
 
-The **timing of events** is critical for two reasons:  
-1. **Consent Mode Events (Default vs. Update):**  
-   - The `Consent Default` must be set first, to define the baseline behavior of tags before consent is known.  
-   - The `Consent Update` must follow when the user’s choice is available. If this happens too late, tags may already have fired under the wrong consent state, leading to missing or incorrect `gcs` parameter values in the hits.  
+## Core concepts
 
-2. **Tag Manager Events (e.g. GTM triggers for GA4 or Google Ads):**  
-   - Tags in GTM rely on the current consent state to determine if they are allowed to fire.  
-   - If the consent state (`Default` or `Update`) is not applied **before** GTM attempts to send data, the outgoing request may either:  
-     - be blocked entirely,  
-     - be delayed, or  
-     - go out with the wrong `gcs` parameters.  
-   - This can result in data loss (no hit sent at all) or compliance issues (a hit sent without the correct consent signals).  
+### Consent signals
+| Parameter | Purpose |
+|---|---|
+| `analytics_storage` | Controls GA4 cookie/data collection |
+| `ads_storage` | Controls Google Ads cookie/data collection |
+| `gcs` | Google Consent State — present in hits when CoMo is active |
+| `gcd` | Google Consent Default — reflects baseline consent state |
 
-3. **Traffic Attribution Risks:**  
-   - Even if a hit is sent, if the consent state is not applied correctly, the hit may be missing attribution information such as the **source/medium**.  
-   - This leads to misattribution in GA4 or other analytics tools, making traffic and conversion analysis unreliable.  
+### Two key events (always check both)
+- **Consent Default** — must fire on every page load, before any tags fire. Reflects
+  the client's cookie policy baseline (usually `denied` for analytics + ads).
+- **Consent Update** — fires after user interacts with the consent banner. Must carry
+  the persisted consent values on every subsequent page load.
 
-> In short  
->- **Default first, Update immediately after consent interaction.**  
->- Make sure the `gcs` parameters are present and correct before dependent GTM tags execute and send data to GA4, Google Ads, or other systems.  
->- Validate that attribution data (source/medium) is also carried through correctly, otherwise campaign and traffic reporting will be inaccurate.
-  {.is-info}
+### Google's required flow (Sep 2024 best practice)
+1. Set `Consent Default` immediately on page load
+2. After user interaction with banner → fire `Consent Update` before any reload
+3. On all subsequent pages → fire `Consent Default` + `Consent Update` (using
+   persisted values from the CMP) before any GTM tags execute
 
-## QA for Google Consent Mode Setup Before Go-Live
+---
 
-To ensure the Consent Mode is correctly implemented, follow these steps:
+## Process
 
-1. **Pre-consent Check:**
-   - Verify that the `Consent Default` event is triggered on the first page load or when the cookie banner appears.
-   - Ensure the default consent state (e.g., `analytics_storage`, `ads_storage`) is set as expected (usually `denied` before user interaction).
+### Step 1 — Tool setup
+1. Install **Google Tag Assistant Companion** from Chrome Web Store
+2. Enable the extension for Incognito windows
+3. Open a new Incognito window (Ctrl+Shift+N) — ensures clean cookie state
+4. Open Tag Assistant → `https://tagassistant.google.com/`
+5. Add the client domain and start debugging
+6. If inspecting GTM tags: paste the GTM Preview link into the debugged browser tab
 
-2. **Consent Update:**
-   - Interact with the consent banner (e.g., accept all cookies) and confirm that the `Consent Update` event is triggered.
-   - Check that the `gcs` and `gcd` parameters in the event reflect the user's consent choice (e.g., `granted` or `denied` for analytics and ads).
+---
 
-3. **Post-consent Validation:**
-   - Navigate through the site or simulate page loads to ensure the `Consent Update` event is triggered on each page load or virtual load in SPAs.
-   - Double-check that no analytics or ads events are fired before the `Consent Update` event.
+### Step 2 — Pre-consent check (cookie banner shown, no interaction yet)
 
-4. **GTM and Tag Testing:**
-   - Use Google Tag Assistant to validate that GTM is firing tags according to the updated consent state.
-   - Confirm that no tags are sent before the consent update is applied.
+**Expected:**
+- :white_check_mark: `Consent Default` event present
+- :x: No `Consent Update` event yet
 
-5. **Attribution and Hits:**
-   - Ensure that traffic and attribution data (e.g., `source/medium`) is correctly passed with the `gcs` and `gcd` parameters in every hit.
+**Check:**
+- Default values match the client's cookie policy (most clients: `analytics_storage:
+  denied`, `ads_storage: denied`)
+- If `Consent Default` is missing → CoMo is not implemented. Any hits sent at this
+  point will lack the `gcs` parameter — flag as **Critical**
+- Click on individual events to verify the `gcs` parameter is absent (correct) or
+  present with the right value
 
-6. **4-Eyes Principle Check:**
-   - The QA process should be done by a **different consultant** than the one who implemented the setup, to ensure an independent review.
-   - Preferably, this consultant should be someone within the same client team who has knowledge of the client's setup to ensure familiarity with specific configurations and expectations.
+---
 
-By following these steps and ensuring the 4-eyes principle, you can ensure that the Consent Mode setup is functioning correctly and in compliance with user consent preferences.
+### Step 3 — Consent interaction (user accepts banner)
 
-</p>
+**Expected:**
+- :white_check_mark: `Consent Update` event fires after user submits consent choice
+- :white_check_mark: `gcs` and `gcd` parameters present in subsequent hits with correct values
+
+**Check:**
+- Locate the `Consent Update` event in Tag Assistant's left-hand event list
+- Click the event → Consent tab → verify parameter values match user's choice
+- Verify that hits sent *before* the `Consent Update` still carry correct `gcs` values
+  (what matters is the value at hit time, not event order alone)
+
+**If the CMP forces a page reload after consent:**
+- `Consent Update` must execute **before** the reload
+- Verify the updated `gcs` values persist into the next page load
+
+**If the CMP does not force a reload:**
+- `Consent Update` must fire immediately after user interaction
+- All subsequent GTM events must fire **after** the updated consent state is in place
+
+---
+
+### Step 4 — Post-consent check (navigating to next page)
+
+**Expected:**
+- :white_check_mark: `Consent Default` fires on every page load
+- :white_check_mark: `Consent Update` fires on every page load (using persisted CMP values)
+- :white_check_mark: `Consent Update` appears before any GA4 / Google Ads hits
+
+**For SPAs specifically:**
+- `Consent Update` required after both hard reloads and every virtual page load
+- Verify consent state is maintained across route changes
+
+---
+
+### Step 5 — Attribution & hit validation
+
+After consent is granted, verify:
+- `gcs` and `gcd` parameters are present in GA4 and Google Ads hits
+- Traffic attribution data (`source/medium`) is correctly passed through
+- No hits are sent before the `Consent Update` event in the timeline
+
+> Missing attribution is often caused by consent timing issues — tags firing before
+> the `Consent Update` completes.
+
+---
+
+## Output format
+
+For audits, structure findings using this severity model:
+
+### :red_circle: Critical
+Issues that cause data loss or compliance violations.
+_Example: `Consent Default` missing entirely; hits sent without `gcs` parameter._
+
+### :large_yellow_circle: Warning
+Issues that may cause incorrect data or partial compliance.
+_Example: `Consent Update` fires after the first GA4 hit on page load._
+
+### :large_green_circle: Suggestion
+Improvements to robustness or future-proofing.
+_Example: Add `wait_for_update` to handle async CMP initialisation._
+
+---
+
+## Rules & constraints
+- Always check `Consent Default` before `Consent Update` — order matters
+- Default state must reflect the client's actual cookie policy — never assume `granted`
+- For SPAs: consent state must be re-applied on every virtual page load, not just
+  hard reloads
+- QA must be performed by a **different consultant** than the implementer (4-eyes
+  principle) — flag this in deliverables
+- Never validate consent in a regular browser window — always use Incognito to
+  simulate a clean state
+
+---
+
+## Common issues & fixes
+
+| Issue | Likely cause | Fix |
+|---|---|---|
+| `gcs` missing from hits | `Consent Default` not set | Add CoMo default tag in GTM firing before all other tags |
+| `Consent Update` fires too late | CMP initialises async | Add `wait_for_update: 500` to CoMo default config |
+| Attribution missing post-consent | Tags fire before `Consent Update` | Adjust tag trigger priority or use consent-aware triggers |
+| Update not persisting on page 2 | CMP not pushing update on reload | Ensure CMP re-fires update event using stored cookie values |
+| SPA losing consent state on route change | Consent only set on hard load | Hook into SPA route change events to re-apply `Consent Update` |
+
+---
+
+## References
+- See `platforms/ga4.md` for GA4-specific consent configuration
+- See `platforms/google-ads.md` for Google Ads consent signal requirements
+- See `conventions/naming-conventions.md` for GTM tag naming of consent-related tags
