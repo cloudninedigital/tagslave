@@ -5,7 +5,7 @@ This skill enables Claude to perform a structured, repeatable data collection au
 
 ## When to trigger this skill
 Trigger when the user:
-- Mentions a "data audit", "data collection audit", or "tracking audit"
+- Mentions explicitly a "complete data audit", "data collection audit", or "tracking audit"
 - Provides a GTM container ID, GTM JSON export, or website URL for audit purposes
 - Shares dataLayer pushes and asks for evaluation
 - Provides backend vs GA4 numbers and asks for comparison
